@@ -302,9 +302,14 @@ class TTFHheaTable extends BaseTree {
     }
 }
 
+export interface Metrics {
+    advanceWidth: number,
+    leftSideBearing: number
+}
+
 class TTFHmtxTable extends BaseTree {
     numOfLongHorMetrics: number;
-    metrics = [];
+    metrics: Metrics[] = [];
     constructor(stream: DataStream, size: number) {
         super();
         this.label = "Table hmtx";
@@ -347,19 +352,26 @@ class TTFHintTable extends BaseTree {
     }
 }
 
-interface Rectangle {
+export interface Rectangle {
     xMin: number;
     yMin: number;
     xMax: number;
     yMax: number;
 }
 
-class TTFGlyphDescription {
+export interface GlyphPoint {
+    x: number;
+    y: number;
+    onCurve: boolean;
+}
+
+export class TTFGlyphDescription {
     bounds: Rectangle;
     instructions: Array<number>;
-    contours = [];
+    points: GlyphPoint[] = [];
+    endPtsOfContours: number[];
 
-    constructor(stream: DataStream) {
+    constructor(stream: DataStream, public metrics: Metrics) {
         const numberOfContours = stream.readInt16();
         this.bounds = {
             xMin: stream.readFWord(),
@@ -368,14 +380,14 @@ class TTFGlyphDescription {
             yMax: stream.readFWord()
         };
         if (numberOfContours >= 0) {
-            const endPtsOfContours = []
+            this.endPtsOfContours = []
             for (let i = 0; i < numberOfContours; ++i) {
-                endPtsOfContours.push(stream.readInt16());
+                this.endPtsOfContours.push(stream.readInt16());
             }
             const instructionLength = stream.readInt16();
             this.instructions = stream.readBytes(instructionLength);
             const flags = []
-            while (flags.length <= endPtsOfContours[endPtsOfContours.length-1]) {
+            while (flags.length <= this.endPtsOfContours[this.endPtsOfContours.length-1]) {
                 const flag = stream.readByte()
                 flags.push(flag)
                 if (flag & (1 << 3)) {
@@ -419,18 +431,12 @@ class TTFGlyphDescription {
                 }
                 yCoordinates.push(y);
             }
-            let index = 0
             let x = 0
             let y = 0
-            for (let e of endPtsOfContours) {
-                const contour = [];
-                this.contours.push(contour);
-                while (index <= e) {
-                    x += xCoordinates[index]
-                    y += yCoordinates[index]
-                    contour.push({x, y, onCurve: (flags[index] & 1) == 1});
-                    index += 1;
-                }
+            for (let i = 0; i < xCoordinates.length; ++i) {
+                x += xCoordinates[i];
+                y += yCoordinates[i];
+                this.points.push({x, y, onCurve: (flags[i] & 1) == 1});
             }
         } else {
             throw "composite glyph";
@@ -503,10 +509,10 @@ export function read(buffer: ArrayBuffer) {
             return pointSize * resolution / (72 * head.unitsPerEm);
         },
         getGlyph(char) {
-            const glyphIndex = cmap.glyphIndex(char)
+            const glyphIndex = cmap.glyphIndex(char);
             if (loca.size(glyphIndex) > 0) {
                 stream.seek(tableDirectory["glyf"].offset + loca.offsets[glyphIndex]);
-                return new TTFGlyphDescription(stream);
+                return new TTFGlyphDescription(stream, hmtx.metrics[glyphIndex]);
             }
             return null;
         }

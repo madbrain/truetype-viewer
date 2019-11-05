@@ -17,10 +17,11 @@
                     aria-describedby="glyph" placeholder="Enter glyph" bind:value={glyph}>
             </div>
         </form>
+        <button type="button" class="btn btn-primary" on:click={step}>Step</button>
     </div>
     <div class="col-6">
-        {#if glyphDefinition}
-        <GlyphView glyphDefinition={glyphDefinition} scale={scale}/>
+        {#if engine && engine.glyphDefinition}
+        <GlyphView glyphDefinition={engine.glyphDefinition} {highlight} />
         {/if}
     </div>
 </div>
@@ -34,9 +35,12 @@ import { make } from "./truetype-engine";
 let glyph = "g";
 let pointSize = 18.0;
 let resolution = 120;
+let highlight = [ ];
 
-$: glyphDefinition = $fontDefinition ? $fontDefinition.getGlyph(glyph) : null;
-$: scale = $fontDefinition ? $fontDefinition.scale(pointSize, resolution) : 0.1;
-$: engine = $fontDefinition ? make($fontDefinition) : null;
+$: engine = $fontDefinition ? make($fontDefinition, glyph, pointSize, resolution) : null;
 
+function step() {
+    // TODO modify highlight on execution
+    engine.step();
+}
 </script>
