@@ -1,5 +1,6 @@
 
 import { FontDefinition, TTFGlyphDescription, GlyphPoint, Rectangle } from "./truetype-reader";
+import { BehaviorSubject } from "rxjs";
 
 enum DistanceType {
     WHITE, BLACK, GRAY
@@ -64,6 +65,7 @@ class GraphicsState {
 }
 
 class Evaluator {
+    state = new BehaviorSubject<any>({pc: 0, instructions: []});
     graphicsState = new GraphicsState();
     memory: Array<number> = [];
     stack: Array<number> = [];
@@ -86,6 +88,7 @@ class Evaluator {
         this.pc = 0;
         this.instructions = instructions;
         this.glyph = glyph;
+        this.state.next({ pc: this.pc, instructions: decodeInstructions(this.instructions) });
     }
 
     evaluateOne() {
@@ -340,6 +343,7 @@ class Evaluator {
         } else {
             throw `unknown opcode ${opcode.toString(16)}`;
         }
+        this.state.next({ pc: this.pc, instructions: decodeInstructions(this.instructions) });
     }
 
     round(n: F26Dot6, distanceType: DistanceType): F26Dot6 {
@@ -370,137 +374,140 @@ class Evaluator {
     }
 }
 
-function decodeInstructions(instructions: Array<number>, initialPc: number, count: number) {
-    let pc = initialPc;
-    while (pc < instructions.length && count-- > 0) {
+function decodeInstructions(instructions: Array<number>) {
+    const result = [];
+    let pc = 0;
+    while (pc < instructions.length) {
+        const startPc = pc;
         const opcode = instructions[pc];
-        let instr = `${pc}: ${opcode} `
+        let instr;
         if ((opcode & ~1) == 0x00) {
-            instr += (`SVTCA[${opcode & 1}]`);
+            instr = (`SVTCA[${opcode & 1}]`);
         } else if ((opcode & ~1) == 0x02) {
-            instr += (`SPVTCA[${opcode & 1}]`);
+            instr = (`SPVTCA[${opcode & 1}]`);
         } else if ((opcode & ~1) == 0x04) {
-            instr += (`SFVTCA[${opcode & 1}]`);
+            instr = (`SFVTCA[${opcode & 1}]`);
         } else if (opcode == 0x0a) {
-            instr += ("SPVFS[]")
+            instr = ("SPVFS[]")
         } else if (opcode == 0x0b) {
-            instr += ("SFVFS[]")
+            instr = ("SFVFS[]")
         } else if (opcode == 0x10) {
-            instr += ("SRP0[]")
+            instr = ("SRP0[]")
         } else if (opcode == 0x11) {
-            instr += ("SRP1[]")
+            instr = ("SRP1[]")
         } else if (opcode == 0x12) {
-            instr += ("SRP2[]")
+            instr = ("SRP2[]")
         } else if (opcode == 0x14) {
-            instr += ("SZP1[]")
+            instr = ("SZP1[]")
         } else if (opcode == 0x17) {
-            instr += ("SLOOP[]")
+            instr = ("SLOOP[]")
         } else if (opcode == 0x18) {
-            instr += ("RTG[]")
+            instr = ("RTG[]")
         } else if (opcode == 0x1b) {
-            instr += ("ELSE[]")
+            instr = ("ELSE[]")
         } else if (opcode == 0x1c) {
-            instr += ("JMPR[]")
+            instr = ("JMPR[]")
         } else if (opcode == 0x1d) {
-            instr += ("SCVTCI[]")
+            instr = ("SCVTCI[]")
         } else if (opcode == 0x20) {
-            instr += ("DUP[]")
+            instr = ("DUP[]")
         } else if (opcode == 0x21) {
-            instr += ("POP[]")
+            instr = ("POP[]")
         } else if (opcode == 0x23) {
-            instr += ("SWAP[]")
+            instr = ("SWAP[]")
         } else if (opcode == 0x25) {
-            instr += ("CINDEX[]")
+            instr = ("CINDEX[]")
         } else if (opcode == 0x2a) {
-            instr += ("LOOPCALL[]")
+            instr = ("LOOPCALL[]")
         } else if (opcode == 0x2b) {
-            instr += ("CALL[]")
+            instr = ("CALL[]")
         } else if (opcode == 0x2c) {
-            instr += ("FDEF[]")
+            instr = ("FDEF[]")
         } else if (opcode == 0x2d) {
-            instr += ("ENDF[]")
+            instr = ("ENDF[]")
         } else if ((opcode & ~1) == 0x2e) {
-            instr += (`MDAP[${opcode & 1}]`);
+            instr = (`MDAP[${opcode & 1}]`);
         } else if ((opcode & ~1) == 0x30) {
-            instr += (`IUP[${opcode & 1}]`)
+            instr = (`IUP[${opcode & 1}]`)
         } else if ((opcode & ~1) == 0x3e) {
-            instr += (`MIAP[${opcode & 1}]`)
+            instr = (`MIAP[${opcode & 1}]`)
         } else if (opcode == 0x39) {
-            instr += ("IP[]")
+            instr = ("IP[]")
         } else if (opcode == 0x3c) {
-            instr += ("ALIGNRP[]")
+            instr = ("ALIGNRP[]")
         } else if (opcode == 0x40) {
             pc += 1;
             const n = instructions[pc];
             //const data = list(instructions[pc+1:pc+n+1]);
             pc += n;
-            instr += ("NPUSHB[]");
+            instr = ("NPUSHB[]");
         } else if (opcode == 0x42) {
-            instr += ("WS[]")
+            instr = ("WS[]")
         } else if (opcode == 0x43) {
-            instr += ("RS[]")
+            instr = ("RS[]")
         } else if (opcode == 0x44) {
-            instr += ("WCVTP[]")
+            instr = ("WCVTP[]")
         } else if (opcode == 0x45) {
-            instr += ("RCVT[]")
+            instr = ("RCVT[]")
         } else if ((opcode & ~1) == 0x46) {
-            instr += (`GC[${opcode & 1}]`)
+            instr = (`GC[${opcode & 1}]`)
         } else if (opcode == 0x50) {
-            instr += ("LT[]")
+            instr = ("LT[]")
         } else if (opcode == 0x51) {
-            instr += ("LTEQ[]")
+            instr = ("LTEQ[]")
         } else if (opcode == 0x53) {
-            instr += ("GTEQ[]")
+            instr = ("GTEQ[]")
         } else if (opcode == 0x54) {
-            instr += ("EQ[]")
+            instr = ("EQ[]")
         } else if (opcode == 0x56) {
-            instr += ("ODD[]")
+            instr = ("ODD[]")
         } else if (opcode == 0x58) {
-            instr += ("IF[]")
+            instr = ("IF[]")
         } else if (opcode == 0x59) {
-            instr += ("EIF[]")
+            instr = ("EIF[]")
         } else if (opcode == 0x60) {
-            instr += ("ADD[]")
+            instr = ("ADD[]")
         } else if (opcode == 0x61) {
-            instr += ("SUB[]")
+            instr = ("SUB[]")
         } else if (opcode == 0x62) {
-            instr += ("DIV[]")
+            instr = ("DIV[]")
         } else if (opcode == 0x64) {
-            instr += ("ABS[]")
+            instr = ("ABS[]")
         } else if (opcode == 0x66) {
-            instr += ("FLOOR[]")
+            instr = ("FLOOR[]")
         } else if ((opcode & ~3) == 0x68) {
-            instr += (`ROUND[${opcode & 3}]`)
+            instr = (`ROUND[${opcode & 3}]`)
         } else if (opcode == 0x76) {
-            instr += ("SROUND[]")
+            instr = ("SROUND[]")
         } else if (opcode == 0x78) {
-            instr += ("JROT[]")
+            instr = ("JROT[]")
         } else if (opcode == 0x85) {
-            instr += ("SCANCTRL[]")
+            instr = ("SCANCTRL[]")
         } else if (opcode == 0x8a) {
-            instr += ("ROLL[]")
+            instr = ("ROLL[]")
         } else if (opcode == 0x8d) {
-            instr += ("SCANTYPE[]")
+            instr = ("SCANTYPE[]")
         } else if ((opcode & ~7) == 0xb0) {
             const n = (opcode & 7) + 1;
             // data = list(instructions[pc+1) {pc+n+1])
-            instr += (`PUSHB[${n}]`)
+            instr = (`PUSHB[${n}]`)
             pc += n;
         } else if ((opcode & ~7) == 0xb8) {
             const n = (opcode & 7) + 1;
             //data = list(instructions[pc+1) {pc+n*2+1])  # TODO make words
-            instr += (`PUSHW[${n}]`)
+            instr = (`PUSHW[${n}]`)
             pc += n * 2;
         } else if ((opcode & ~0x1F) == 0xC0) {
-            instr += (`MDRP[${opcode & 0x1f}]`)
+            instr = (`MDRP[${opcode & 0x1f}]`)
         } else if ((opcode & ~0x1F) == 0xE0) {
-            instr += (`MIRP[${opcode & 0x1f}]`)
+            instr = (`MIRP[${opcode & 0x1f}]`)
         } else {
-            instr += `[${opcode.toString(16)}]`;
+            instr = `[${opcode.toString(16)}]`;
         }
         pc += 1;
-        console.log(instr);
+        result.push({pc: startPc, label: instr});
     }
+    return result;
 }
 
 export interface ScaledGlyph {
@@ -545,8 +552,12 @@ export function make(fontDefinition: FontDefinition, glyph: string, pointSize: n
     }
     return {
         glyphDefinition: scaledGlyph,
+        state: evaluator.state,
         step() {
-            decodeInstructions(evaluator.instructions, evaluator.pc, 1);
+            // TODO evaluate to next instruction dont go into sub functions
+            evaluator.evaluateOne();
+        },
+        stepInto() {
             evaluator.evaluateOne();
         }
     };

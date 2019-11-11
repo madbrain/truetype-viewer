@@ -6,13 +6,13 @@
 
   <div class="collapse navbar-collapse" id="navbarsExampleDefault">
     <ul class="navbar-nav mr-auto">
-      <NavLink label="Binary" href="/" />
-      <NavLink label="Glyph" href="/glyph" />
+      <RouterNavLink label="Binary" href="/" />
+      <RouterNavLink label="Glyph" href="/glyph" />
     </ul>
   </div>
 </nav>
 
 <script>
-  import NavLink from './NavLink.svelte';
+  import RouterNavLink from './RouterNavLink.svelte';
   import { link } from 'svelte-spa-router';
 </script>
