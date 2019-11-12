@@ -2,8 +2,8 @@
   <div class="card-header">Code</div>
   <div class="overflow-auto with-scroller">
     <ul class="list-group list-group-flush">
-    {#each $state.instructions as instruction}
-      <li class="list-group-item" class:selected={$state.pc == instruction.pc}>{instruction.pc} {instruction.label}</li>
+    {#each state.instructions as instruction}
+      <li class="list-group-item" class:selected={state.pc == instruction.pc}>{instruction.pc} {instruction.label}</li>
     {/each}
     </ul>
   </div>
@@ -19,6 +19,9 @@
 </style>
 
 <script>
+import {onDestroy} from 'svelte';
 export let engine;
-$: state = engine.state;
+let state;
+$: sub = engine.state.subscribe(_ => state = _);
+onDestroy(() => sub.unsubscribe());
 </script>

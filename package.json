@@ -2,9 +2,10 @@
   "name": "svelte-bootstrap",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/main.js",
   "scripts": {
-    "serve": "webpack-dev-server"
+    "serve": "webpack-dev-server",
+    "build": "NODE_ENV=production webpack"
   },
   "author": "",
   "license": "ISC",

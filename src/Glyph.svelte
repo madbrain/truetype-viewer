@@ -24,6 +24,7 @@
             <div class="btn-group mr-2" role="group">
                 <button type="button" class="btn btn-primary" on:click={stepInto}>Step Into</button>
                 <button type="button" class="btn btn-primary" on:click={step}>Step</button>
+                <button type="button" class="btn btn-primary" on:click={stepOut}>Step Out</button>
             </div>
         </div>
         
@@ -66,5 +67,9 @@ function stepInto() {
 function step() {
     // TODO modify highlight on execution
     engine.step();
+}
+function stepOut() {
+    // TODO modify highlight on execution
+    engine.stepOut();
 }
 </script>

@@ -65,11 +65,12 @@ class GraphicsState {
 }
 
 class Evaluator {
-    state = new BehaviorSubject<any>({pc: 0, instructions: []});
+    state = new BehaviorSubject<any>({pc: 0, instructions: [], callStack: [], memory: [], stack: []});
     graphicsState = new GraphicsState();
     memory: Array<number> = [];
     stack: Array<number> = [];
     functionDefinitions = {};
+    currentFn: number;
     pc: number;
     instructions : Array<number>;
     callStack = [];
@@ -88,7 +89,27 @@ class Evaluator {
         this.pc = 0;
         this.instructions = instructions;
         this.glyph = glyph;
-        this.state.next({ pc: this.pc, instructions: decodeInstructions(this.instructions) });
+        this.currentFn = -1;
+        this.pushState();
+    }
+
+    evaluateStep() {
+        const opcode = this.instructions[this.pc];
+        if (opcode == 0x2a || opcode == 0x2b) {
+            const l = this.callStack.length;
+            do {
+                this.evaluateOne();
+            } while (this.callStack.length != l);
+        } else {
+            this.evaluateOne();
+        }
+    }
+
+    evaluateStepOut() {
+        const l = this.callStack.length - 1;
+        do {
+            this.evaluateOne();
+        } while (this.callStack.length != l);
     }
 
     evaluateOne() {
@@ -153,14 +174,16 @@ class Evaluator {
             // LOOPCALL[]
             const fn = this.stack.pop();
             const count = this.stack.pop();
-            this.callStack.push({ pc: this.pc, instructions: this.instructions, count: count - 1, fn });
+            this.callStack.push({ pc: this.pc, instructions: this.instructions, count: count - 1, loopFn: fn, fn: this.currentFn });
+            this.currentFn = fn;
             this.instructions = this.functionDefinitions[fn].instructions;
             this.pc = 0;
             console.log(`LOOPCALL ${fn} ${count}`);
         } else if (opcode == 0x2b) {
             // CALL[]
             const fn = this.stack.pop();
-            this.callStack.push({ pc: this.pc, instructions: this.instructions, count: 0 });
+            this.callStack.push({ pc: this.pc, instructions: this.instructions, count: 0, fn: this.currentFn });
+            this.currentFn = fn;
             this.instructions = this.functionDefinitions[fn].instructions;
             this.pc = 0;
             console.log(`CALL ${fn}`);
@@ -172,16 +195,18 @@ class Evaluator {
             this.functionDefinitions[functionNumber] = { instructions: this.instructions.slice(startPc, this.pc) };
         } else if (opcode == 0x2d) {
             // ENDF[]
-            const { fn, count, pc, instructions } = this.callStack.pop();
+            const { fn, loopFn, count, pc, instructions } = this.callStack.pop();
             if (count == 0) {
+                this.currentFn = fn;
                 this.instructions = instructions;
                 this.pc = pc;
                 console.log(`ENDF`);
             } else {
-                this.callStack.push({ pc, instructions, count: count - 1, fn });
-                this.instructions = this.functionDefinitions[fn].instructions;
+                this.callStack.push({ pc, instructions, count: count - 1, fn, loopFn });
+                this.currentFn = loopFn;
+                this.instructions = this.functionDefinitions[loopFn].instructions;
                 this.pc = 0;
-                console.log(`RECALL ${fn}`);
+                console.log(`RECALL ${loopFn}`);
             }
         } else if ((opcode & ~1) == 0x2e) {
             // MDAP[]
@@ -343,7 +368,6 @@ class Evaluator {
         } else {
             throw `unknown opcode ${opcode.toString(16)}`;
         }
-        this.state.next({ pc: this.pc, instructions: decodeInstructions(this.instructions) });
     }
 
     round(n: F26Dot6, distanceType: DistanceType): F26Dot6 {
@@ -371,6 +395,16 @@ class Evaluator {
                 this.pc += n;
             }
         }
+    }
+
+    pushState() {
+        this.state.next({
+            pc: this.pc,
+            instructions: decodeInstructions(this.instructions),
+            callStack: this.callStack.map(e => ({ pc: e.pc, count: e.count, fn: e.fn })).reverse(),
+            memory: this.memory,
+            stack: this.stack.slice().reverse()
+        });
     }
 }
 
@@ -555,10 +589,16 @@ export function make(fontDefinition: FontDefinition, glyph: string, pointSize: n
         state: evaluator.state,
         step() {
             // TODO evaluate to next instruction dont go into sub functions
-            evaluator.evaluateOne();
+            evaluator.evaluateStep();
+            evaluator.pushState();
         },
         stepInto() {
             evaluator.evaluateOne();
+            evaluator.pushState();
+        },
+        stepOut() {
+            evaluator.evaluateStepOut();
+            evaluator.pushState();
         }
     };
 }

@@ -13,17 +13,41 @@
     </TabNavBar>
   </div>
   <div class="card-body">
+  <div class="overflow-auto with-scroller">
     {#if currentPage == Memory}
-    <p class="card-text">Memory</p>
+    <ul class="element-list">
+      {#each state.memory as element, i}
+      <li>[{i}] {element} ({element / 64})</li>
+      {/each}
+    </ul>
     {:else if currentPage == Stack}
-    <p class="card-text">Stack</p>
+    <ul class="element-list">
+      {#each state.stack as element}
+      <li>{element} ({element / 64})</li>
+      {/each}
+    </ul>
     {:else}
-    <p class="card-text">Call Stack</p>
+    <ul class="element-list">
+      {#each state.callStack as element}
+      <li>Function {element.fn} at {element.pc}{#if element.count > 0} (repeat: {element.count}){/if}</li>
+      {/each}
+    </ul>
     {/if}
+  </div>
   </div>
 </div>
 
+<style>
+.element-list {
+  list-style: none;
+}
+.with-scroller {
+  height: 500px; /* TODO use calc(100% - 400px) */
+}
+</style>
+
 <script>
+import {onDestroy} from 'svelte';
 import TabNavBar from './TabNavBar.svelte';
 import TabNavLink from './TabNavLink.svelte';
 const Memory = 0;
@@ -35,4 +59,9 @@ let currentPage = Memory;
 function select(event) {
     currentPage = event.detail;
 }
+
+export let engine;
+let state;
+$: sub = engine.state.subscribe(_ => state = _);
+onDestroy(() => sub.unsubscribe());
 </script>
