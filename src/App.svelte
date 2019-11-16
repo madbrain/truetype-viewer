@@ -1,19 +1,15 @@
 <NavBar name="Template"/>
 
-<main role="main" class="container-fluid">
-
-  <div class="starter-template">
-    <Router {routes}/>
-  </div>
-
-</main><!-- /.container -->
+<main role="main" class="container-fluid starter-template">
+  <Router {routes}/>
+</main>
 
 <style>
 :global(body) {
   padding-top: 5rem;
 }
 .starter-template {
-  padding: 3rem 1.5rem;
+  padding: 1.5rem 1.5rem;
 }
 </style>
 

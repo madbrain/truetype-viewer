@@ -3,7 +3,7 @@
   <div class="overflow-auto with-scroller">
     <ul class="list-group list-group-flush">
     {#each state.instructions as instruction}
-      <li class="list-group-item" class:selected={state.pc == instruction.pc}>{instruction.pc} {instruction.label}</li>
+      <li class="list-group-item" class:selected={state.pc == instruction.pc}>{instruction.pc} {instruction.label} {#if instruction.info}<span class="info">{instruction.info}</span>{/if}</li>
     {/each}
     </ul>
   </div>
@@ -15,6 +15,9 @@
 }
 .selected {
   background-color: aqua;
+}
+span.info {
+  color: blue;
 }
 </style>
 

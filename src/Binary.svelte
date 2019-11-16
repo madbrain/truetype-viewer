@@ -1,20 +1,32 @@
+<form class="col-3 mb-2">
+    <div class="custom-file">
+        <input type="file" class="custom-file-input" id="trueTypeFile"
+                accept=".ttf" bind:files={files} on:change={fileChange}>
+        <label class="custom-file-label" for="trueTypeFile">{fileText || "Choose TrueType file"}</label>
+    </div>
+</form>
+
+{#if $fontDefinition}
+<div class="col-4">
+    <div class="card mb-2">
+        <div class="card-header">Info</div>
+        <ul class="list-group list-group-flush">
+            <li class="list-group-item">Name: {$fontDefinition.names.get(1)}</li>
+            <li class="list-group-item">Style: {$fontDefinition.names.get(2)}</li>
+            <li class="list-group-item">Version: {$fontDefinition.names.get(5)}</li>
+            <li class="list-group-item">Copyright: {$fontDefinition.names.get(0)}</li>
+        </ul>
+    </div>
+</div>
 <div class="row">
     <div class="col-6">
-        <form>
-            <div class="custom-file">
-                <input type="file" class="custom-file-input" id="trueTypeFile"
-                        accept=".ttf" bind:files={files} on:change={fileChange}>
-                <label class="custom-file-label" for="trueTypeFile">{fileText || "Choose TrueType file"}</label>
-            </div>
-        </form>
-        {#if $fontDefinition}
         <Tree tree={$fontDefinition.tree} />
-        {/if}
     </div>
     <div class="col-6">
         <p>Binary view</p>
     </div>
 </div>
+{/if}
 
 <script>
 

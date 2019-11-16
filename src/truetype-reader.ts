@@ -169,6 +169,82 @@ class TTFHeadTable extends BaseTree {
     }
 }
 
+class TTFNameTable extends BaseTree {
+    format: number;
+    count: number;
+    stringOffset: number;
+    names: Array<{id: number, value: string}>;
+
+    constructor(stream: DataStream) {
+        super();
+        const s = stream.position();
+        this.label = "Table name";
+        this.field("format", stream.readInt16());
+        this.field("count", stream.readInt16());
+        this.field("stringOffset", stream.readInt16());
+
+        const records = [];
+        for (let i = 0; i < this.count; ++i) {
+            const platformID = stream.readInt16();
+            const platformSpecificID = stream.readInt16();
+            const languageID = stream.readInt16();
+            const nameID = stream.readInt16();
+            const length = stream.readInt16();
+            const offset = stream.readInt16();
+            records.push({platformID, platformSpecificID, languageID, nameID, length, offset});
+        }
+        this.names = records.filter(record => record.platformID == 1).map(record => {
+            stream.seek(s + this.stringOffset + record.offset);
+            return { id: record.nameID, value: stream.readString(record.length) };
+        });
+        this.composite("Name Records", records.map(({platformID, platformSpecificID, languageID, nameID, length, offset}, i) => ({ label: `${i}`, children: [
+            {label: `platformID: ${platformID}`},
+            {label: `platformSpecificID: ${platformSpecificID}`},
+            {label: `languageID: ${languageID}`},
+            {label: `nameID: ${nameID}`},
+            {label: `length: ${length}`},
+            {label: `offset: ${offset}`}
+        ]})));
+        this.composite("Names", this.names.map(({id, value}) => ({ label: `${nameID2label(id)}: ${value}` })));
+    }
+
+    get(id: number) {
+        const record = this.names.find(record => record.id == id);
+        if (record) {
+            return record.value;
+        }
+        return "";
+    }
+}
+
+function nameID2label(id: number) {
+    if (id == 0) {
+        return "Copyright";
+    }
+    if (id == 1) {
+        return "Font Family";
+    }
+    if (id == 2) {
+        return "Font Subfamily";
+    }
+    if (id == 3) {
+        return "Unique Subfamily Identification";
+    }
+    if (id == 4) {
+        return "Full Font Name";
+    }
+    if (id == 5) {
+        return "Version";
+    }
+    if (id == 6) {
+        return "PostScript Name";
+    }
+    if (id == 7) {
+        return "Trademark notice";
+    }
+    return `unknown[${id}]`;
+}
+
 class TTFMaxpTable extends BaseTree {
     version: number;
     numGlyphs: number;
@@ -471,6 +547,9 @@ export function read(buffer: ArrayBuffer) {
     stream.seek(tableDirectory["head"].offset);
     const head = new TTFHeadTable(stream);
 
+    stream.seek(tableDirectory["name"].offset);
+    const name = new TTFNameTable(stream);
+
     stream.seek(tableDirectory["maxp"].offset);
     const maxp = new TTFMaxpTable(stream);
 
@@ -497,12 +576,13 @@ export function read(buffer: ArrayBuffer) {
     
     const tree = {
         label: "TrueType Font",
-        children: [ header, tableDirectoryNode, head, maxp, cmap, loca, hhea, hmtx, cvt, fpgm, prep ]
+        children: [ header, tableDirectoryNode, head, name, maxp, cmap, loca, hhea, hmtx, cvt, fpgm, prep ]
     }
 
     return {
         tree,
         cvt: cvt.entries,
+        names: name,
         fpgm: fpgm.instructions,
         prep: prep.instructions,
         scale(pointSize, resolution) {
