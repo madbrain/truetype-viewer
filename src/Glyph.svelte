@@ -19,7 +19,7 @@
                 </div>
             </div>
         </form>
-        {#if engine && engine.glyphDefinition}
+        {#if engine && engine.hasGlyph}
         <div class="btn-toolbar mt-2" role="toolbar">
             <div class="btn-group mr-2" role="group">
                 <button type="button" class="btn btn-primary" on:click={stepInto}>Step Into</button>
@@ -39,8 +39,8 @@
         {/if}
     </div>
     <div class="col-6">
-        {#if engine && engine.glyphDefinition}
-        <GlyphView glyphDefinition={engine.glyphDefinition} {highlight} />
+        {#if engine && engine.hasGlyph}
+        <GlyphViewWrapper engine={engine} />
         {/if}
     </div>
 </div>
@@ -48,7 +48,7 @@
 <script>
 
 import { fontDefinition } from "./store";
-import GlyphView from './GlyphView.svelte';
+import GlyphViewWrapper from './GlyphViewWrapper.svelte';
 import Code from './Code.svelte';
 import States from './States.svelte';
 import { make } from "./truetype-engine";
@@ -56,7 +56,6 @@ import { make } from "./truetype-engine";
 let glyph = "g";
 let pointSize = 18.0;
 let resolution = 120;
-let highlight = [ ];
 
 $: engine = $fontDefinition ? make($fontDefinition, glyph, pointSize, resolution) : null;
 
