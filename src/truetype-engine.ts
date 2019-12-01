@@ -80,8 +80,13 @@ class Line {
         const u = this.direction.dy * other.direction.dx;
         const v = other.direction.dy * this.direction.dx;
         const x = ((other.point.y - this.point.y) * this.direction.dx * other.direction.dx + this.point.x * u - other.point.x * v) / (u - v);
-        const y = x * other.direction.dy / other.direction.dx + other.point.y - other.point.x * other.direction.dy / other.direction.dx;
-        return { x, y };        
+        if (other.direction.dx != 0) {
+            const y = x * other.direction.dy / other.direction.dx + other.point.y - other.point.x * other.direction.dy / other.direction.dx;
+            return { x, y };
+        } else {
+            const y = x * this.direction.dy / this.direction.dx + this.point.y - this.point.x * this.direction.dy / this.direction.dx;
+            return { x, y };
+        }
     }
 }
 
@@ -117,6 +122,12 @@ class GraphicsState {
     rp2: number = 0;
 }
 
+enum Opcodes {
+    IF   = 0x58,
+    EIF  = 0x59,
+    ELSE = 0x1b
+}
+
 class Evaluator {
     state = new BehaviorSubject<any>({pc: 0, instructions: [], callStack: [], memory: [], stack: []});
     graphicsState = new GraphicsState();
@@ -143,7 +154,7 @@ class Evaluator {
         this.instructions = instructions;
         this.glyph = glyph;
         this.currentFn = -1;
-        this.initState();
+        this.state = new BehaviorSubject(this.makeState());
     }
 
     evaluateStep() {
@@ -152,6 +163,10 @@ class Evaluator {
             const l = this.callStack.length;
             do {
                 this.evaluateOne();
+                // DEBUG stop at breakpoint
+                if (this.currentFn == 7 && this.pc == 13) {
+                    break;
+                }
             } while (this.callStack.length != l);
         } else {
             this.evaluateOne();
@@ -168,7 +183,16 @@ class Evaluator {
     evaluateOne() {
         const opcode = this.instructions[this.pc++];
         
-        if (opcode == 0x10) {
+        if ((opcode & ~1) == 0x00) {
+            const isX = opcode & 1;
+            if (isX) {
+                this.graphicsState.projectionVector = new Vector(1, 0);
+                this.graphicsState.freedomVector = new Vector(1, 0);
+            } else {
+                this.graphicsState.projectionVector = new Vector(0, 1);
+                this.graphicsState.freedomVector = new Vector(0, 1);
+            }
+        } else if (opcode == 0x10) {
             // SRP0[]
             const p = this.stack.pop();
             this.graphicsState.rp0 = p;
@@ -183,14 +207,14 @@ class Evaluator {
         } else if (opcode == 0x14) {
             // SZP1[]
             const n = this.stack.pop();
-            // TODO
+            console.log("TODO SZP1")
         } else if (opcode == 0x17) {
             // SLOOP[]
             this.graphicsState.loopCount = this.stack.pop();
         } else if (opcode == 0x18) {
             // RTG[]
             this.graphicsState.roundParameters = RoundToGrid;
-        } else if (opcode == 0x1b) {
+        } else if (opcode == Opcodes.ELSE) {
             // ELSE[]
             console.log("skip else");
             let ifCount = 0;
@@ -278,11 +302,68 @@ class Evaluator {
                 // TODO equivalent to instruction SCFS[]
                 this.glyph.points[p] = this.movePointAt(point, roundedMeasure.value);
             }
-            // TODO mark as touched
+        } else if ((opcode & ~1) == 0x3e) {
+            // MIAP[]
+            const roundValue = (opcode & 1) == 1;
+            const measure = this.cvt[this.stack.pop()];
+            const p = this.stack.pop();
+            const point = this.glyph.originalPoints[p];
+            console.log(`[MIAP] move indirect and ${roundValue ? "round" : "do not round"} point ${p} cvt=${measure.value / 64}`);
+            let roundedMeasure = measure;
+            if (roundValue) {
+                roundedMeasure = this.round(measure, DistanceType.GRAY);
+            }
+            this.glyph.points[p] = this.movePointAt(point, roundedMeasure.value);
         } else if ((opcode & ~1) == 0x30) {
             // IUP[]
             const isX = opcode & 1;
             console.log(`[IUP] interpolate untouched point in ${isX ? "X" : "Y"}`);
+            let startPt = 0;
+            this.glyph.endPtsOfContours.forEach(endPt => {
+                console.log(`contour from ${startPt} to ${endPt}`);
+                const touchedPoints = [];
+                for (let pt = startPt; pt <= endPt; ++pt) {
+                    const point = this.glyph.points[pt];
+                    if (point.isTouched) {
+                        touchedPoints.push({ pt,
+                            oldMeasure: this.measurePoint(this.glyph.originalPoints[pt]),
+                            measure: this.measurePoint(this.glyph.points[pt])
+                        });
+                    }
+                }
+                touchedPoints.sort((a, b) => a.oldMeasure - b.oldMeasure);
+                console.log(`touched point ${touchedPoints.map(x => x.pt)}`);
+                for (let pt = startPt; pt <= endPt; ++pt) {
+                    const point = this.glyph.points[pt];
+                    const measure = this.measurePoint(point);
+                    if (point.isTouched) {
+                        continue;
+                    }
+                    let found = -1;
+                    let index = 0;
+                    while (index < touchedPoints.length-1) {
+                        if (touchedPoints[index].oldMeasure <= measure
+                                && measure < touchedPoints[index+1].oldMeasure) {
+                            found = index;
+                            break;
+                        }
+                        index += 1;
+                    }
+                    if (found >= 0) {
+                        const rp1 = touchedPoints[found];
+                        const rp2 = touchedPoints[found+1];
+                        console.log(`process point ${pt} => between ${rp1.pt} and ${rp2.pt}`)
+                        const newMeasure = (rp2.measure * (measure - rp1.oldMeasure) - rp1.measure * (measure - rp2.oldMeasure)) / (rp2.oldMeasure - rp1.oldMeasure);
+                        this.glyph.points[pt] = this.movePointAt(point, newMeasure, false);
+                    } else {
+                        const rp = this.findNearest(point, touchedPoints);
+                        console.log(`process point ${pt} => nearest ${rp.pt}`);
+                        const newMeasure = measure + (rp.measure - rp.oldMeasure);
+                        this.glyph.points[pt] = this.movePointAt(point, newMeasure, false);
+                    }
+                }
+                startPt = endPt + 1;
+            });
         } else if (opcode == 0x39) {
             // IP[]
             const oldRp1 = this.measurePoint(this.glyph.originalPoints[this.graphicsState.rp1]);
@@ -291,11 +372,17 @@ class Evaluator {
             const rp2 = this.measurePoint(this.glyph.points[this.graphicsState.rp2]);
             for (let i = 0; i < this.graphicsState.loopCount; ++i) {
                 const p = this.stack.pop();
+                console.log(`[IP] interpolate point ${p}`);
                 const point = this.glyph.originalPoints[p];
                 const oldMeasure = this.measurePoint(point);
                 const measure = (rp2 * (oldMeasure - oldRp1) - rp1 * (oldMeasure - oldRp2)) / (oldRp2 - oldRp1);
                 this.glyph.points[p] = this.movePointAt(point, measure);
-                console.log(`[IP] interpolate point ${p}`);
+            }
+        } else if (opcode == 0x3c) {
+            // ALIGNRP[]
+            for (let i = 0; i < this.graphicsState.loopCount; ++i) {
+                const p = this.stack.pop();
+                console.log(`[ALIGNRP] TODO align point ${p}`);
             }
         } else if (opcode == 0x40) {
             // NPUSHB[]
@@ -354,27 +441,28 @@ class Evaluator {
             // ODD[]
             const a = new F26Dot6(this.stack.pop());
             this.stack.push((this.round(a, DistanceType.GRAY).floor().value / 64) & 1);
-        } else if (opcode == 0x58) {
+        } else if (opcode == Opcodes.IF) {
             // IF[]
             const condition = this.stack.pop();
             if (! condition) {
                 console.log("skip if block");
                 let ifCount = 0;
                 while (true) {
-                    const pos = this.skipTo([ 0x58, 0x59, 0x1b ]);
+
+                    const pos = this.skipTo([ Opcodes.IF, Opcodes.EIF, Opcodes.ELSE ]);
                     if (pos == 0) {
                         console.log("nested++");
                         ifCount++;
                     } else if (ifCount == 0) {
                         console.log("to", pos);
                         break;
-                    } else {
+                    } else if (pos == 1) {
                         console.log("nested--");
                         ifCount--;
                     }
                 }
             }
-        } else if (opcode == 0x59) {
+        } else if (opcode == Opcodes.EIF) {
             // EIF[]
         } else if (opcode == 0x60) {
             // ADD[]
@@ -481,9 +569,10 @@ class Evaluator {
             const point = this.glyph.points[p];
             const rp0 = this.glyph.points[this.graphicsState.rp0];
             const measure = this.measurePoint(point);
+            const oldRefMeasure = this.measurePoint(this.glyph.originalPoints[this.graphicsState.rp0]);
             const refMeasure = this.measurePoint(rp0);
             // TODO use keepDistanceGreaterThanMinimal and roundAndCutIn
-            const newMeasure = measure - refMeasure > 0 ? refMeasure + cvt.value : refMeasure - cvt.value;
+            const newMeasure = measure - oldRefMeasure > 0 ? refMeasure + cvt.value : refMeasure - cvt.value;
             this.glyph.points[p] = this.movePointAt(point, newMeasure);
             this.graphicsState.rp1 = this.graphicsState.rp0;
             this.graphicsState.rp2 = p;
@@ -495,15 +584,34 @@ class Evaluator {
         }
     }
 
+    findNearest(point: ScaledGlyphPoint, touchedPoints: Array<{pt: number}>) {
+        let distance = -1;
+        let minRp;
+        touchedPoints.forEach(rp => {
+            const refPoint = this.glyph.originalPoints[rp.pt];
+            const d = this.distance(point, refPoint);
+            if (distance < 0 || d < distance) {
+                minRp = rp;
+            }
+        })
+        return minRp;
+    }
+
+    distance(a: GlyphPoint, b: GlyphPoint) {
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
     measurePoint(point: Point) {
         return this.graphicsState.projectionVector.dot(new Vector(point.x, point.y));
     }
 
-    movePointAt(point: GlyphPoint, at: number) {
+    movePointAt(point: ScaledGlyphPoint, at: number, isTouched = true) {
         const l1 = new Line(this.graphicsState.projectionVector.scale(at).toPoint(), this.graphicsState.projectionVector.normal());
         const l2 = new Line(point, this.graphicsState.freedomVector);
         const newPoint = l1.intersect(l2);
-        return { x: newPoint.x, y: newPoint.y, onCurve: point.onCurve };
+        return { x: newPoint.x, y: newPoint.y, onCurve: point.onCurve, isTouched };
     }
 
     round(n: F26Dot6, distanceType: DistanceType): F26Dot6 {
@@ -548,28 +656,21 @@ class Evaluator {
         }
     }
 
-    initState() {
-        const { instructions } = this.decodeInstructions();
-        this.state = new BehaviorSubject({
-            pc: this.pc,
-            instructions: instructions,
-            callStack: this.callStack.map(e => ({ pc: e.pc, count: e.count, fn: e.fn })).reverse(),
-            memory: this.memory,
-            stack: this.stack.slice().reverse(),
-            glyph: this.glyph
-        });
+    pushState() {
+        this.state.next(this.makeState());
     }
 
-    pushState() {
+    makeState() {
         const { instructions } = this.decodeInstructions();
-        this.state.next({
+        const callStack = this.callStack.concat({ pc: this.pc, fn: this.currentFn, count: 0 });
+        return {
             pc: this.pc,
             instructions: instructions,
-            callStack: this.callStack.map(e => ({ pc: e.pc, count: e.count, fn: e.fn })).reverse(),
+            callStack: callStack.map(e => ({ pc: e.pc, count: e.count, fn: e.fn })).reverse(),
             memory: this.memory,
             stack: this.stack.slice().reverse(),
             glyph: this.glyph
-        });
+        };
     }
 
     private decodeInstructions() {
@@ -581,7 +682,8 @@ class Evaluator {
             let instr;
             let info;
             if ((opcode & ~1) == 0x00) {
-                instr = (`SVTCA[${opcode & 1}]`);
+                const isX = opcode & 1;
+                instr = (`SVTCA[${isX ? "X" : "Y"}]`);
             } else if ((opcode & ~1) == 0x02) {
                 instr = (`SPVTCA[${opcode & 1}]`);
             } else if ((opcode & ~1) == 0x04) {
@@ -646,11 +748,14 @@ class Evaluator {
             } else if ((opcode & ~1) == 0x30) {
                 const isX = opcode & 1;
                 instr = `IUP[${isX ? "X" : "Y"}]`;
-                if (this.pc == pc) {
-                    info = `count=${this.graphicsState.loopCount}`;
-                }
             } else if ((opcode & ~1) == 0x3e) {
-                instr = (`MIAP[${opcode & 1}]`)
+                const roundValue = (opcode & 1) == 1;
+                instr = (`MIAP[${roundValue ? "ROUND" : "NO_ROUND"}]`);
+                if (this.pc == pc) {
+                    const cvt = this.stack[this.stack.length-1];
+                    const p = this.stack[this.stack.length-2];
+                    info = `cvt=${cvt} point=${p}`;
+                }
             } else if (opcode == 0x39) {
                 instr = "IP[]";
                 if (this.pc == pc) {
@@ -715,7 +820,8 @@ class Evaluator {
             } else if (opcode == 0x66) {
                 instr = ("FLOOR[]")
             } else if ((opcode & ~3) == 0x68) {
-                instr = (`ROUND[${opcode & 3}]`)
+                const distanceType = makeDistanceType(opcode & 3);
+                instr = (`ROUND[${distanceType == DistanceType.BLACK ? "BLACK" : distanceType == DistanceType.WHITE ? "WHITE" : "GRAY"}]`);
             } else if (opcode == 0x76) {
                 instr = ("SROUND[]")
             } else if (opcode == 0x78) {
@@ -756,21 +862,29 @@ class Evaluator {
     }
 }
 
+export interface ScaledGlyphPoint {
+    x: number;
+    y: number;
+    onCurve: boolean;
+    isTouched: boolean;
+}
+
 export interface ScaledGlyph {
     bounds: Rectangle,
     endPtsOfContours: Array<number>,
-    points: Array<GlyphPoint>,
-    originalPoints: Array<GlyphPoint>
+    points: Array<ScaledGlyphPoint>,
+    originalPoints: Array<ScaledGlyphPoint>
 }
 
 function scaleGlyph(glyphDefinition: TTFGlyphDescription, scale: number): ScaledGlyph {
     const points = glyphDefinition.points.map(p => ({
         x: scaleNumber(p.x, scale).value,
         y: scaleNumber(p.y, scale).value,
-        onCurve: p.onCurve
+        onCurve: p.onCurve,
+        isTouched: false
     })).concat(
-        { x: 0, y: 0, onCurve: false },
-        { x: scaleNumber(glyphDefinition.metrics.advanceWidth, scale).value, y: 0, onCurve: false});
+        { x: 0, y: 0, onCurve: false, isTouched: false },
+        { x: scaleNumber(glyphDefinition.metrics.advanceWidth, scale).value, y: 0, onCurve: false, isTouched: false });
     return {
         bounds: {
             xMin: scaleNumber(glyphDefinition.bounds.xMin, scale).value,
