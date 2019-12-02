@@ -307,6 +307,8 @@ class Evaluator {
             const roundValue = (opcode & 1) == 1;
             const measure = this.cvt[this.stack.pop()];
             const p = this.stack.pop();
+            this.graphicsState.rp0 = p;
+            this.graphicsState.rp1 = p;
             const point = this.glyph.originalPoints[p];
             console.log(`[MIAP] move indirect and ${roundValue ? "round" : "do not round"} point ${p} cvt=${measure.value / 64}`);
             let roundedMeasure = measure;
