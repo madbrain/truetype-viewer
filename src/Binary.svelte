@@ -23,7 +23,7 @@
         <Tree tree={$fontDefinition.tree} />
     </div>
     <div class="col-6">
-        <p>Binary view</p>
+        <BinaryView buffer={$fontDefinition.buffer} />
     </div>
 </div>
 {/if}
@@ -33,6 +33,7 @@
 import { fontDefinition } from "./store";
 import { read } from "./truetype-reader";
 import Tree from "./Tree.svelte"
+import BinaryView from "./BinaryView.svelte";
 
 let files;
 let fileText;

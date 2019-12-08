@@ -3,8 +3,8 @@ class DataStream {
     private data: Uint8Array;
     private index = 0;
     
-    constructor(buffer: ArrayBuffer) {
-        this.data = new Uint8Array(buffer);
+    constructor(data: Uint8Array) {
+        this.data = data;
     }
 
     readByte() {
@@ -20,6 +20,10 @@ class DataStream {
         }
         this.index += amount;
         return result;
+    }
+
+    atEnd() {
+        return this.index == this.data.length;
     }
 
     position() {
@@ -79,15 +83,51 @@ class DataStream {
     }
 }
 
+interface Span {
+    start: number;
+    end: number;
+}
+
+function mergeSpan(a: Span, b: Span) {
+    return { start: Math.min(a.start, b.start), end: Math.max(a.end, b.end) };
+}
+
 class BaseTree {
     label: string = "";
     children = [];
+    span: Span;
 
-    field(name, value) {
+    field(name: string, value) {
         this.children.push({ label: `${name}: ${value}`});
         this[name] = value;
     }
-    composite(name, children) {
+
+    fieldSpan(name: string, stream: DataStream, getter: () => any) {
+        const start = stream.position();
+        const value = getter();
+        const end = stream.position();
+        this.children.push({ label: `${name}: ${value}`, span: {start, end}});
+        this[name] = value;
+        return value;
+    }
+
+    computeSpan() {
+        let span = null;
+        this.children.forEach(c => {
+            if (c.span) {
+                if (span) {
+                    span = mergeSpan(span, c.span);
+                } else {
+                    span = c.span;
+                }
+            }
+        })
+        if (span) {
+            this.span = span;
+        }
+    }
+
+    composite(name: string, children) {
         this.children.push({ label: name, children });
     }
 }
@@ -101,11 +141,12 @@ class TTFOffsetSubtable extends BaseTree {
     constructor(stream: DataStream) {
         super();
         this.label = "Offset Subtable";
-        this.field("scalerType", stream.readInt32());
-        this.field("numTables", stream.readInt16());
-        this.field("searchRange", stream.readInt16());
-        this.field("entrySelector", stream.readInt16());
-        this.field("rangeShift", stream.readInt16());
+        this.fieldSpan("scalerType", stream, () => stream.readInt32());
+        this.fieldSpan("numTables", stream, () => stream.readInt16());
+        this.fieldSpan("searchRange", stream, () => stream.readInt16());
+        this.fieldSpan("entrySelector", stream, () => stream.readInt16());
+        this.fieldSpan("rangeShift", stream, () => stream.readInt16());
+        this.computeSpan();
     }
 }
 
@@ -116,10 +157,11 @@ class TTFTableDirectoryEntry extends BaseTree {
     length: number;
     constructor(stream: DataStream) {
         super();
-        this.field("tag", stream.readString(4));
-        this.field("checkSum", stream.readInt32());
-        this.field("offset", stream.readInt32());
-        this.field("length", stream.readInt32());
+        this.fieldSpan("tag", stream, () => stream.readString(4));
+        this.fieldSpan("checkSum", stream, () => stream.readInt32());
+        this.fieldSpan("offset", stream, () => stream.readInt32());
+        this.fieldSpan("length", stream, () => stream.readInt32());
+        this.computeSpan();
         this.label = this.tag;
     }
 }
@@ -146,26 +188,27 @@ class TTFHeadTable extends BaseTree {
     constructor(stream: DataStream) {
         super();
         this.label = "Table head";
-        this.field("version", stream.readFixed());
-        this.field("fontRevision", stream.readFixed());
-        this.field("checkSumAdjustment", stream.readInt32());
-        this.field("magic", stream.readInt32());
+        this.fieldSpan("version", stream, () => stream.readFixed());
+        this.fieldSpan("fontRevision", stream, () => stream.readFixed());
+        this.fieldSpan("checkSumAdjustment", stream, () => stream.readInt32());
+        this.fieldSpan("magic", stream, () => stream.readInt32());
         if (this.magic != 0x5F0F3CF5) {
             throw "bad magic in head";
         }
-        this.field("flags", stream.readInt16());
-        this.field("unitsPerEm", stream.readInt16());
-        this.field("created", stream.readLongDateTime());
-        this.field("modified", stream.readLongDateTime());
-        this.field("xMin", stream.readFWord());
-        this.field("yMin", stream.readFWord());
-        this.field("xMax", stream.readFWord());
-        this.field("yMax", stream.readFWord());
-        this.field("macStyle", stream.readInt16());
-        this.field("lowestRecPPEM", stream.readInt16());
-        this.field("fontDirectionHint", stream.readInt16());
-        this.field("indexToLocFormat", stream.readInt16());
-        this.field("glyphDataFormat", stream.readInt16());
+        this.fieldSpan("flags", stream, () => stream.readInt16());
+        this.fieldSpan("unitsPerEm", stream, () => stream.readInt16());
+        this.fieldSpan("created", stream, () => stream.readLongDateTime());
+        this.fieldSpan("modified", stream, () => stream.readLongDateTime());
+        this.fieldSpan("xMin", stream, () => stream.readFWord());
+        this.fieldSpan("yMin", stream, () => stream.readFWord());
+        this.fieldSpan("xMax", stream, () => stream.readFWord());
+        this.fieldSpan("yMax", stream, () => stream.readFWord());
+        this.fieldSpan("macStyle", stream, () => stream.readInt16());
+        this.fieldSpan("lowestRecPPEM", stream, () => stream.readInt16());
+        this.fieldSpan("fontDirectionHint", stream, () => stream.readInt16());
+        this.fieldSpan("indexToLocFormat", stream, () => stream.readInt16());
+        this.fieldSpan("glyphDataFormat", stream, () => stream.readInt16());
+        this.computeSpan();
     }
 }
 
@@ -179,9 +222,9 @@ class TTFNameTable extends BaseTree {
         super();
         const s = stream.position();
         this.label = "Table name";
-        this.field("format", stream.readInt16());
-        this.field("count", stream.readInt16());
-        this.field("stringOffset", stream.readInt16());
+        this.fieldSpan("format", stream, () => stream.readInt16());
+        this.fieldSpan("count", stream, () => stream.readInt16());
+        this.fieldSpan("stringOffset", stream, () => stream.readInt16());
 
         const records = [];
         for (let i = 0; i < this.count; ++i) {
@@ -206,6 +249,7 @@ class TTFNameTable extends BaseTree {
             {label: `offset: ${offset}`}
         ]})));
         this.composite("Names", this.names.map(({id, value}) => ({ label: `${nameID2label(id)}: ${value}` })));
+        this.computeSpan();
     }
 
     get(id: number) {
@@ -265,21 +309,22 @@ class TTFMaxpTable extends BaseTree {
     constructor(stream: DataStream) {
         super();
         this.label = "Table maxp";
-        this.field("version", stream.readFixed());
-        this.field("numGlyphs", stream.readInt16());
-        this.field("maxPoints", stream.readInt16());
-        this.field("maxContours", stream.readInt16());
-        this.field("maxComponentPoints", stream.readInt16());
-        this.field("maxComponentContours", stream.readInt16());
-        this.field("maxZones", stream.readInt16());
-        this.field("maxTwilightPoints", stream.readInt16());
-        this.field("maxStorage", stream.readInt16());
-        this.field("maxFunctionDefs", stream.readInt16());
-        this.field("maxInstructionDefs", stream.readInt16());
-        this.field("maxStackElements", stream.readInt16());
-        this.field("maxSizeOfInstructions", stream.readInt16());
-        this.field("maxComponentElements", stream.readInt16());
-        this.field("maxComponentDepth", stream.readInt16());
+        this.fieldSpan("version", stream, () => stream.readFixed());
+        this.fieldSpan("numGlyphs", stream, () => stream.readInt16());
+        this.fieldSpan("maxPoints", stream, () => stream.readInt16());
+        this.fieldSpan("maxContours", stream, () => stream.readInt16());
+        this.fieldSpan("maxComponentPoints", stream, () => stream.readInt16());
+        this.fieldSpan("maxComponentContours", stream, () => stream.readInt16());
+        this.fieldSpan("maxZones", stream, () => stream.readInt16());
+        this.fieldSpan("maxTwilightPoints", stream, () => stream.readInt16());
+        this.fieldSpan("maxStorage", stream, () => stream.readInt16());
+        this.fieldSpan("maxFunctionDefs", stream, () => stream.readInt16());
+        this.fieldSpan("maxInstructionDefs", stream, () => stream.readInt16());
+        this.fieldSpan("maxStackElements", stream, () => stream.readInt16());
+        this.fieldSpan("maxSizeOfInstructions", stream, () => stream.readInt16());
+        this.fieldSpan("maxComponentElements", stream, () => stream.readInt16());
+        this.fieldSpan("maxComponentDepth", stream, () => stream.readInt16());
+        this.computeSpan();
     }
 }
 
@@ -361,20 +406,21 @@ class TTFHheaTable extends BaseTree {
     constructor(stream: DataStream) {
         super();
         this.label = "Table hhea";
-        this.field("version", stream.readFixed());
-        this.field("ascent", stream.readFWord());
-        this.field("descent", stream.readFWord());
-        this.field("lineGap", stream.readFWord());
-        this.field("advanceWidthMax", stream.readFWord());
-        this.field("minLeftSideBearing", stream.readFWord());
-        this.field("minRightSideBearing", stream.readFWord());
-        this.field("xMaxExtent", stream.readFWord());
-        this.field("caretSlopeRise", stream.readInt16());
-        this.field("caretSlopeRun", stream.readInt16());
-        this.field("caretOffset", stream.readFWord());
+        this.fieldSpan("version", stream, () => stream.readFixed());
+        this.fieldSpan("ascent", stream, () => stream.readFWord());
+        this.fieldSpan("descent", stream, () => stream.readFWord());
+        this.fieldSpan("lineGap", stream, () => stream.readFWord());
+        this.fieldSpan("advanceWidthMax", stream, () => stream.readFWord());
+        this.fieldSpan("minLeftSideBearing", stream, () => stream.readFWord());
+        this.fieldSpan("minRightSideBearing", stream, () => stream.readFWord());
+        this.fieldSpan("xMaxExtent", stream, () => stream.readFWord());
+        this.fieldSpan("caretSlopeRise", stream, () => stream.readInt16());
+        this.fieldSpan("caretSlopeRun", stream, () => stream.readInt16());
+        this.fieldSpan("caretOffset", stream, () => stream.readFWord());
         stream.skip(4*2);
-        this.field("metricDataFormat", stream.readInt16());
-        this.field("numOfLongHorMetrics", stream.readInt16());
+        this.fieldSpan("metricDataFormat", stream, () => stream.readInt16());
+        this.fieldSpan("numOfLongHorMetrics", stream, () => stream.readInt16());
+        this.computeSpan();
     }
 }
 
@@ -530,7 +576,8 @@ export interface FontDefinition {
 }
 
 export function read(buffer: ArrayBuffer) {
-    const stream = new DataStream(buffer);
+    const byteBuffer = new Uint8Array(buffer);
+    const stream = new DataStream(byteBuffer);
     const header = new TTFOffsetSubtable(stream);
 
     const tableDirectoryNode = {
@@ -580,6 +627,7 @@ export function read(buffer: ArrayBuffer) {
     }
 
     return {
+        buffer: byteBuffer,
         tree,
         cvt: cvt.entries,
         names: name,

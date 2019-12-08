@@ -1,4 +1,4 @@
-<NavBar name="Template"/>
+<NavBar />
 
 <main role="main" class="container-fluid starter-template">
   <Router {routes}/>
